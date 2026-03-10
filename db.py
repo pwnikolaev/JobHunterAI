@@ -44,7 +44,7 @@ def init_db() -> None:
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 source      TEXT NOT NULL,
                 title       TEXT NOT NULL,
-                url         TEXT NOT NULL,
+                url         TEXT UNIQUE NOT NULL,
                 salary      TEXT,
                 scraped_at  TEXT NOT NULL
             )
@@ -145,11 +145,11 @@ def get_pending_vacancies(min_score: int = 0):
 
 
 def log_vacancy(source: str, title: str, url: str, salary: str = "") -> None:
-    """Write every scraped vacancy to the log table (including duplicates)."""
+    """Write scraped vacancy to the log table. Skips if URL already exists."""
     scraped_at = datetime.utcnow().isoformat()
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO vacancy_log (source, title, url, salary, scraped_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO vacancy_log (source, title, url, salary, scraped_at) VALUES (?, ?, ?, ?, ?)",
             (source, title, url, salary, scraped_at),
         )
         conn.commit()

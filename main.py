@@ -41,20 +41,6 @@ logger = logging.getLogger("main")
 # Language filter
 # ──────────────────────────────────────────────
 
-# Patterns that indicate required English level is above B2
-_ENGLISH_TOO_HIGH = re.compile(
-    r'\b(C[12]|native(\s+speaker)?|advanced\s+english|proficient\s+english|'
-    r'fluent\s+(in\s+)?english|english\s+(at\s+)?C[12]|upper[\s-]advanced)\b',
-    re.IGNORECASE,
-)
-
-
-def _is_cyrillic_dominant(text: str) -> bool:
-    """True if the text is predominantly Cyrillic (Russian or Ukrainian)."""
-    cyrillic = sum(1 for c in text if '\u0400' <= c <= '\u04FF')
-    latin = sum(1 for c in text if 'a' <= c.lower() <= 'z')
-    return cyrillic > latin * 0.4  # at least ~29% Cyrillic vs Latin
-
 
 def is_acceptable_location(vacancy: dict) -> bool:
     """
@@ -86,34 +72,25 @@ def is_acceptable_location(vacancy: dict) -> bool:
 
 def is_acceptable_language(vacancy: dict) -> bool:
     """
-    Returns False (skip) if:
-    - The vacancy language is not RU/UA/EN (e.g. Polish, German, etc.)
-    - The description explicitly requires C1/C2/native English
+    Returns False (skip) if the vacancy description is not in Russian or Ukrainian.
+    Requires Cyrillic to be the dominant script in the text.
     """
-    text = " ".join(filter(None, [
-        vacancy.get("title", ""),
-        vacancy.get("description", ""),
-    ]))
+    # Use description as primary signal only — title alone is not enough
+    text = vacancy.get("description", "").strip()
 
-    # Detect vacancy language: accept Cyrillic (RU/UA) or Latin (EN)
-    # Reject if text is Latin but not English-like (heuristic: non-English words)
+    if not text:
+        return True  # no description — can't determine, let through
+
     cyrillic = sum(1 for c in text if '\u0400' <= c <= '\u04FF')
     latin = sum(1 for c in text if 'a' <= c.lower() <= 'z')
     total = cyrillic + latin
 
     if total == 0:
-        return True  # can't determine, let it through
+        return True  # only punctuation/digits — let through
 
-    # If less than 5% Cyrillic AND less than 60% Latin → likely non-EN/RU/UA language
-    cyrillic_ratio = cyrillic / total
-    latin_ratio = latin / total
-    if cyrillic_ratio < 0.05 and latin_ratio < 0.6:
-        logger.debug("Skipped (non-target language): %s", vacancy.get("title"))
-        return False
-
-    # Check for C1/C2/native English requirement
-    if _ENGLISH_TOO_HIGH.search(text):
-        logger.debug("Skipped (English level too high): %s", vacancy.get("title"))
+    # Accept only if Cyrillic is dominant (>50% of letter chars)
+    if cyrillic / total < 0.5:
+        logger.debug("Skipped (not RU/UA): %s", vacancy.get("title"))
         return False
 
     return True
