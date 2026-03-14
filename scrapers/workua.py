@@ -18,13 +18,15 @@ BASE_URL = "https://www.work.ua"
 # Category-style URLs that Work.ua renders server-side
 SEARCH_SLUGS = [
     "cio",
-    "cto",
-    "it+director",
+    "chief+information+officer",
     "head+of+it",
-    "head+of+automation",
-    "digital+transformation",
-    "vp+of+it",
+    "it+manager",
+    "it+director",
+    "director+of+technology",
     "vp+of+technology",
+    "head+of+digital+transformation",
+    "head+of+automation",
+    "it+operations+manager",
 ]
 
 

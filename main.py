@@ -16,7 +16,7 @@ from datetime import datetime
 from telegram.ext import Application
 
 import db
-from config import MIN_MATCH_SCORE, SCAN_INTERVAL_MINUTES, TARGET_LOCATIONS, EXCLUDED_LOCATIONS
+from config import MIN_MATCH_SCORE, SCAN_INTERVAL_MINUTES, TARGET_LOCATIONS, EXCLUDED_LOCATIONS, SEARCH_KEYWORDS
 from ai_scorer import score_vacancy
 from bot import build_application, send_vacancies_batch
 
@@ -42,55 +42,190 @@ logger = logging.getLogger("main")
 # ──────────────────────────────────────────────
 
 
-def is_acceptable_location(vacancy: dict) -> bool:
-    """
-    Returns False (skip) if location is explicitly outside target regions.
-    Vacancies with empty location are allowed (likely remote).
-    """
-    location = (vacancy.get("location") or "").lower()
+MIN_UAH_SALARY = 150_000
 
-    if not location:
-        return True  # no location = remote, allow
+PROJECT_KEYWORDS = [
+    "проектна робота", "проектний", "project-based", "project based",
+    "contract", "контракт", "підряд", "freelance", "фріланс",
+    "тимчасова", "temporary", "short-term", "part-time",
+]
 
-    # Reject if explicitly excluded region
-    if any(excl in location for excl in EXCLUDED_LOCATIONS):
-        logger.debug("Skipped (excluded location '%s'): %s", location, vacancy.get("title"))
+
+def _parse_uah_max(salary_str: str) -> int | None:
+    """
+    Extract the maximum UAH value from a salary string.
+    Returns None if salary is not in UAH or cannot be parsed.
+    """
+    if not salary_str:
+        return None
+    s = salary_str.lower().replace('\xa0', '').replace(' ', '')
+    if 'грн' not in s and 'uah' not in s:
+        return None
+    numbers = [int(n) for n in re.findall(r'\d+', s) if len(n) >= 4]
+    return max(numbers) if numbers else None
+
+
+def is_salary_acceptable(vacancy: dict) -> bool:
+    """
+    Skip if: NOT project work AND UAH salary is specified and max value < 150,000 грн.
+    Pass if: project work, salary >= 150,000 грн, non-UAH salary, or salary not specified.
+    """
+    text = (
+        (vacancy.get("description") or "") + " " + (vacancy.get("title") or "")
+    ).lower()
+
+    # Project/contract work — always pass regardless of salary
+    if any(kw in text for kw in PROJECT_KEYWORDS):
+        return True
+
+    uah_max = _parse_uah_max(vacancy.get("salary") or "")
+    if uah_max is None:
+        return True  # salary unknown or non-UAH — let through
+
+    if uah_max < MIN_UAH_SALARY:
+        logger.debug("Skipped (salary %d UAH < %d): %s", uah_max, MIN_UAH_SALARY, vacancy.get("title"))
         return False
 
-    # If location is specified, it must match at least one target
-    # Exception: sources that are inherently local (Work.ua, Robota.ua, DOU) — always allow
-    if vacancy.get("source") in ("Work.ua", "Robota.ua", "DOU", "Djinni"):
+    return True
+
+
+def is_relevant_title(vacancy: dict) -> bool:
+    """Returns True only if title or description contains at least one SEARCH_KEYWORD (whole-word match)."""
+    text = (
+        (vacancy.get("title") or "") + " " + (vacancy.get("description") or "")
+    ).lower()
+    return any(
+        re.search(r'(?<![a-z])' + re.escape(kw.lower()) + r'(?![a-z])', text)
+        for kw in SEARCH_KEYWORDS
+    )
+
+
+REMOTE_KEYWORDS = [
+    "remote", "remotely", "fully remote",
+    "дистанційно", "дистанційна", "дистанційний", "дистанц",
+    "удалённо", "удалённая", "удалённый",
+    "віддалено", "віддалена", "віддалений",
+    "worldwide", "global", "anywhere",
+]
+
+# Office work is acceptable only in these countries
+OFFICE_COUNTRIES = [
+    # Italy
+    "italy", "italia", "italien", "італія", "италия",
+    "milan", "milano", "rome", "roma", "turin", "torino", "florence", "firenze",
+    # Spain
+    "spain", "españa", "іспанія", "испания",
+    "madrid", "barcelona", "valencia", "seville", "sevilla",
+    # Slovenia
+    "slovenia", "словенія", "словения", "slowenien",
+    "ljubljana",
+    # Poland
+    "poland", "polska", "польща", "польша",
+    "warsaw", "warszawa", "kraków", "krakow", "wrocław", "wroclaw", "gdańsk", "gdansk",
+    # Cyprus
+    "cyprus", "кіпр", "кипр",
+    "limassol", "nicosia", "paphos",
+    # Ireland
+    "ireland", "ірландія", "ирландия",
+    "dublin",
+]
+
+
+def is_acceptable_work_location(vacancy: dict) -> bool:
+    """
+    Accept if: remote (anywhere), OR office in Italy/Spain/Slovenia/Poland/Cyprus/Ireland.
+    Vacancies with no location are allowed (assumed remote/flexible).
+    """
+    location = (vacancy.get("location") or "").lower()
+    description = (vacancy.get("description") or "").lower()
+    full_text = location + " " + description
+
+    if any(kw in full_text for kw in REMOTE_KEYWORDS):
         return True
 
-    if any(tgt in location for tgt in TARGET_LOCATIONS):
+    if not location.strip():
+        return True  # no location info — assume flexible/remote
+
+    if any(country in full_text for country in OFFICE_COUNTRIES):
         return True
 
-    # Unknown location from LinkedIn/other — skip to avoid noise
-    logger.debug("Skipped (non-target location '%s'): %s", location, vacancy.get("title"))
+    logger.debug("Skipped (location not remote or target country '%s'): %s", location, vacancy.get("title"))
     return False
+
+
+def is_english_level_acceptable(vacancy: dict) -> bool:
+    """
+    Returns False if the vacancy explicitly requires English above B2 (C1, C2, native, fluent/advanced).
+    Vacancies with no English requirement or B2 and below are allowed.
+    Vacancies in English are allowed — only the required level is checked.
+    """
+    text = (
+        (vacancy.get("description") or "") + " " + (vacancy.get("title") or "")
+    ).lower()
+
+    if not text.strip():
+        return True
+
+    above_b2_patterns = [
+        # Level codes near "english"
+        r'english\s*[:\-–—]\s*c[12]',
+        r'c[12]\s+english',
+        r'english\s+c[12]\b',
+        # Native
+        r'native\s+(?:english|speaker)',
+        r'english\s*[:\-–—]\s*native',
+        r'native\s+level\s+(?:of\s+)?english',
+        # Fluent
+        r'fluent\s+(?:in\s+)?english',
+        r'english\s*[:\-–—]\s*fluent',
+        r'english\s+fluency',
+        # Advanced / Proficient (C1 equivalents)
+        r'advanced\s+english',
+        r'english\s*[:\-–—]\s*advanced',
+        r'english\s+advanced',
+        r'proficient\s+(?:in\s+)?english',
+        r'english\s*[:\-–—]\s*proficient',
+        # Ukrainian/Russian patterns
+        r'англійськ\w*\s*[:\-–—]?\s*c[12]',
+        r'англійськ\w*\s*[:\-–—]\s*(?:advanced|fluent|native|носій)',
+        r'английск\w*\s*[:\-–—]?\s*c[12]',
+        r'английск\w*\s*[:\-–—]\s*(?:advanced|fluent|native|носитель)',
+        r'знання?\s+англійськ\w*\s+(?:на\s+рівні\s+)?c[12]',
+        r'знание\s+английск\w*\s+(?:на\s+уровне\s+)?c[12]',
+    ]
+
+    for pattern in above_b2_patterns:
+        if re.search(pattern, text):
+            logger.debug("Skipped (English above B2): %s", vacancy.get("title"))
+            return False
+
+    return True
 
 
 def is_acceptable_language(vacancy: dict) -> bool:
     """
-    Returns False (skip) if the vacancy description is not in Russian or Ukrainian.
-    Requires Cyrillic to be the dominant script in the text.
+    Accept if:
+    - Vacancy description is in Russian or Ukrainian (Cyrillic dominant), OR
+    - Vacancy is in English and does not require English above B2.
     """
-    # Use description as primary signal only — title alone is not enough
-    text = vacancy.get("description", "").strip()
+    text = (vacancy.get("description") or "").strip()
 
     if not text:
-        return True  # no description — can't determine, let through
+        return True  # can't determine — let through
 
     cyrillic = sum(1 for c in text if '\u0400' <= c <= '\u04FF')
     latin = sum(1 for c in text if 'a' <= c.lower() <= 'z')
     total = cyrillic + latin
 
     if total == 0:
-        return True  # only punctuation/digits — let through
+        return True
 
-    # Accept only if Cyrillic is dominant (>50% of letter chars)
-    if cyrillic / total < 0.5:
-        logger.debug("Skipped (not RU/UA): %s", vacancy.get("title"))
+    if cyrillic / total >= 0.5:
+        return True  # RU/UA vacancy — always accept
+
+    # English (or other) vacancy — check English level requirement
+    if not is_english_level_acceptable(vacancy):
+        logger.debug("Skipped (English vacancy, requires C1+): %s", vacancy.get("title"))
         return False
 
     return True
@@ -139,7 +274,14 @@ def process_and_store(vacancies: list) -> list[int]:
             salary=v.get("salary", ""),
         )
 
-        if not is_acceptable_location(v):
+        if not is_relevant_title(v):
+            logger.debug("Skipped (irrelevant title): %s", v.get("title"))
+            continue
+
+        if not is_salary_acceptable(v):
+            continue
+
+        if not is_acceptable_work_location(v):
             continue
 
         if not is_acceptable_language(v):

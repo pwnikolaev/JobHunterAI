@@ -25,18 +25,15 @@ enterprise architecture, cloud infrastructure, automation, AI integration.
 # Search keywords (any of these must appear in title or description)
 SEARCH_KEYWORDS = [
     "CIO",
-    "CTO",
-    "Head of IT",
-    "IT Director",
-    "Head of Automation",
-    "Digital Transformation",
     "Chief Information Officer",
-    "Chief Technology Officer",
-    "VP of IT",
-    "VP of Technology",
-    "Head of Technology",
-    "Director of IT",
+    "Head of IT",
+    "IT Manager",
+    "IT Director",
     "Director of Technology",
+    "VP of Technology",
+    "Head of Digital Transformation",
+    "Head of Automation",
+    "IT Operations Manager",
 ]
 
 # Minimum AI match score to notify via Telegram (0–100)

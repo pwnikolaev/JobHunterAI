@@ -52,6 +52,29 @@ def init_db() -> None:
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_log_scraped_at ON vacancy_log (scraped_at)
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS candidates (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT,
+                position    TEXT NOT NULL,
+                url         TEXT UNIQUE NOT NULL,
+                source      TEXT,
+                location    TEXT,
+                salary      TEXT,
+                experience  TEXT,
+                description TEXT,
+                match_score INTEGER DEFAULT 0,
+                ai_comment  TEXT,
+                status      TEXT DEFAULT 'new',
+                found_at    TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_candidate_url ON candidates (url)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_candidate_status ON candidates (status)
+        """)
         conn.commit()
     logger.info("Database initialised at %s", DB_PATH)
 
@@ -153,6 +176,90 @@ def log_vacancy(source: str, title: str, url: str, salary: str = "") -> None:
             (source, title, url, salary, scraped_at),
         )
         conn.commit()
+
+
+# ── Candidates ────────────────────────────────────────────────────────────────
+
+def candidate_exists(url: str) -> bool:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT 1 FROM candidates WHERE url = ?", (url,)
+        ).fetchone() is not None
+
+
+def insert_candidate(
+    name: str,
+    position: str,
+    url: str,
+    source: str,
+    location: str = "",
+    salary: str = "",
+    experience: str = "",
+    description: str = "",
+    match_score: int = 0,
+    ai_comment: str = "",
+    status: str = "new",
+) -> Optional[int]:
+    """Insert a new candidate. Returns new row id, or None if duplicate."""
+    if candidate_exists(url):
+        return None
+    found_at = datetime.utcnow().isoformat()
+    with get_connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO candidates
+                (name, position, url, source, location, salary, experience,
+                 description, match_score, ai_comment, status, found_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (name, position, url, source, location, salary, experience,
+             description, match_score, ai_comment, status, found_at),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_candidate_score(candidate_id: int, score: int, comment: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE candidates SET match_score = ?, ai_comment = ? WHERE id = ?",
+            (score, comment, candidate_id),
+        )
+        conn.commit()
+
+
+def update_candidate_status(candidate_id: int, status: str) -> None:
+    """Set status: new | viewed | contacted | rejected."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE candidates SET status = ? WHERE id = ?",
+            (status, candidate_id),
+        )
+        conn.commit()
+
+
+def get_candidate_stats() -> dict:
+    with get_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0]
+        viewed = conn.execute(
+            "SELECT COUNT(*) FROM candidates WHERE status = 'viewed'"
+        ).fetchone()[0]
+        contacted = conn.execute(
+            "SELECT COUNT(*) FROM candidates WHERE status = 'contacted'"
+        ).fetchone()[0]
+        rejected = conn.execute(
+            "SELECT COUNT(*) FROM candidates WHERE status = 'rejected'"
+        ).fetchone()[0]
+        avg_score = conn.execute(
+            "SELECT AVG(match_score) FROM candidates WHERE match_score > 0"
+        ).fetchone()[0]
+    return {
+        "total": total,
+        "viewed": viewed,
+        "contacted": contacted,
+        "rejected": rejected,
+        "avg_score": round(avg_score or 0, 1),
+    }
 
 
 def get_stats() -> dict:

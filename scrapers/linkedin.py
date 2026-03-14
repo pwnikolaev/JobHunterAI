@@ -24,7 +24,7 @@ BASE_URL = "https://www.linkedin.com"
 SEARCH_PARAMS_LIST = [
     # Ukraine
     {
-        "keywords": "CIO CTO Head of IT IT Director",
+        "keywords": "CIO \"Chief Information Officer\" \"Head of IT\" \"IT Director\"",
         "location": "Ukraine",
         "f_TPR": "r604800",
         "position": "1",
@@ -32,7 +32,7 @@ SEARCH_PARAMS_LIST = [
     },
     # Europe (remote)
     {
-        "keywords": "CIO CTO Head of IT",
+        "keywords": "CIO \"Head of IT\" \"IT Manager\" \"VP of Technology\"",
         "location": "Europe",
         "f_WT": "2",          # Remote
         "f_TPR": "r604800",
@@ -41,7 +41,7 @@ SEARCH_PARAMS_LIST = [
     },
     # Europe (on-site / hybrid)
     {
-        "keywords": "IT Director Digital Transformation VP of Technology",
+        "keywords": "\"IT Director\" \"Director of Technology\" \"Head of Digital Transformation\"",
         "location": "Europe",
         "f_TPR": "r604800",
         "position": "1",
@@ -49,7 +49,7 @@ SEARCH_PARAMS_LIST = [
     },
     # Cyprus
     {
-        "keywords": "CIO CTO Head of IT IT Director",
+        "keywords": "CIO \"Chief Information Officer\" \"Head of IT\" \"IT Director\"",
         "location": "Cyprus",
         "f_TPR": "r604800",
         "position": "1",
@@ -57,7 +57,7 @@ SEARCH_PARAMS_LIST = [
     },
     # Remote worldwide
     {
-        "keywords": "Head of Automation VP of IT Chief Technology Officer",
+        "keywords": "\"Head of Automation\" \"IT Operations Manager\" \"Head of Digital Transformation\"",
         "location": "",
         "f_WT": "2",
         "f_TPR": "r604800",

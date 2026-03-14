@@ -17,13 +17,15 @@ VACANCY_URL_FALLBACK = "https://robota.ua/vacancy{id}"
 
 SEARCH_TERMS = [
     "CIO",
-    "CTO",
+    "Chief Information Officer",
     "Head of IT",
+    "IT Manager",
     "IT Director",
-    "Head of Automation",
-    "Digital Transformation",
-    "VP of IT",
+    "Director of Technology",
     "VP of Technology",
+    "Head of Digital Transformation",
+    "Head of Automation",
+    "IT Operations Manager",
 ]
 
 
