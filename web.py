@@ -341,6 +341,9 @@ HTML = """
     .status-select { font-size: .75rem; border-radius: 6px; padding: 2px 6px; border: 1px solid #dee2e6; background: #fff; cursor: pointer; }
     .status-select.s-new      { color: #6c757d; border-color: #adb5bd; }
     .status-select.s-applied  { color: #0a6640; background: #d1fae5; border-color: #6ee7b7; font-weight: 600; }
+    .status-select.s-saved    { color: #1a4a8a; background: #dbeafe; border-color: #93c5fd; font-weight: 600; }
+    .status-select.s-skipped  { color: #6c757d; background: #f1f3f5; border-color: #ced4da; }
+    .status-select.s-rejected { color: #7c2d12; background: #fee2e2; border-color: #fca5a5; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -527,8 +530,11 @@ HTML = """
                 <select class="status-select s-{{ sc }}"
                         data-id="{{ r.id }}" data-prev="{{ sc }}"
                         onchange="this.className='status-select s-'+this.value; updateStatus(this)">
-                  <option value="new"     {% if sc == 'new'     %}selected{% endif %}>Нове</option>
-                  <option value="applied" {% if sc == 'applied' %}selected{% endif %}>Відправлено відгук</option>
+                  <option value="new"      {% if sc == 'new'      %}selected{% endif %}>Нове</option>
+                  <option value="applied"  {% if sc == 'applied'  %}selected{% endif %}>Відправлено відгук</option>
+                  <option value="saved"    {% if sc == 'saved'    %}selected{% endif %}>Збережено</option>
+                  <option value="skipped"  {% if sc == 'skipped'  %}selected{% endif %}>Пропущено</option>
+                  <option value="rejected" {% if sc == 'rejected' %}selected{% endif %}>Не підходить</option>
                 </select>
               </td>
               <td class="text-muted small">{{ r.found_at[:16].replace('T', ' ') if r.found_at else '—' }}</td>
@@ -675,7 +681,7 @@ def paginate(query, params, page, page_size=PAGE_SIZE):
 
 # ── API endpoints ──────────────────────────────────────────────────────────────
 
-ALLOWED_STATUSES = {"new", "applied"}
+ALLOWED_STATUSES = {"new", "sent", "applied", "saved", "skipped", "rejected"}
 
 @app.route("/api/vacancy/<int:vacancy_id>/status", methods=["POST"])
 def api_vacancy_status(vacancy_id):
@@ -831,9 +837,20 @@ def index():
 
 if __name__ == "__main__":
     import argparse
+    import socket
+
+    def find_free_port(start: int = 5000, end: int = 5100) -> int:
+        for port in range(start, end):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex(("127.0.0.1", port)) != 0:
+                    return port
+        raise RuntimeError(f"No free port found in range {start}–{end}")
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--port", type=int, default=None)
     args = parser.parse_args()
+
+    port = args.port if args.port else find_free_port()
     db.init_db()
-    print(f"Dashboard: http://localhost:{args.port}")
-    app.run(debug=False, port=args.port, threaded=True)
+    print(f"Dashboard: http://localhost:{port}")
+    app.run(debug=False, port=port, threaded=True)

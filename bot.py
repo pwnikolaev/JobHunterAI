@@ -89,6 +89,9 @@ def build_vacancy_keyboard(vacancy_id: int, url: str) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("❌ Пропустити", callback_data=f"skip:{vacancy_id}"),
+            InlineKeyboardButton("🚫 Не підходить", callback_data=f"reject:{vacancy_id}"),
+        ],
+        [
             InlineKeyboardButton("🔗 Відкрити вакансію", url=url),
         ],
     ])
@@ -120,6 +123,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Відгукнувся: `{stats['applied']}`\n"
         f"Збережено: `{stats['saved']}`\n"
         f"Пропущено: `{stats['skipped']}`\n"
+        f"Не підходить: `{stats['rejected']}`\n"
         f"Середній score: `{stats['avg_score']}/100`"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
@@ -189,6 +193,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
             f"❌ Вакансію *{vacancy['title']}* пропущено.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    elif action == "reject":
+        db.update_status(vacancy_id, "rejected")
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(
+            f"🚫 Вакансію *{vacancy['title']}* відмічено як «Не підходить».",
             parse_mode=ParseMode.MARKDOWN,
         )
 

@@ -277,6 +277,9 @@ def get_stats() -> dict:
         skipped = conn.execute(
             "SELECT COUNT(*) FROM vacancies WHERE status = 'skipped'"
         ).fetchone()[0]
+        rejected = conn.execute(
+            "SELECT COUNT(*) FROM vacancies WHERE status = 'rejected'"
+        ).fetchone()[0]
         avg_score = conn.execute(
             "SELECT AVG(match_score) FROM vacancies WHERE match_score > 0"
         ).fetchone()[0]
@@ -286,5 +289,6 @@ def get_stats() -> dict:
         "applied": applied,
         "saved": saved,
         "skipped": skipped,
+        "rejected": rejected,
         "avg_score": round(avg_score or 0, 1),
     }
